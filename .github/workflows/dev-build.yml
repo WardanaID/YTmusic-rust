@@ -1,0 +1,68 @@
+name: Dev Build (Windows)
+
+on:
+  push:
+    branches: ["dev", "dev-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64:
+    name: Build & Test (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: dev-x64
+          cache-on-failure: true
+
+      - name: Check with Clippy
+        shell: pwsh
+        run: |
+          $out = cargo clippy --locked --all-targets --message-format=short -- -D warnings 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            $err = (($out -split "`r?`n") | Where-Object { $_ -match "error|warning:" } | Select-Object -First 25) -join "%0A"
+            if (-not $err) { $err = ($out -replace "`r","" -replace "`n","%0A") }
+            Write-Output "::error title=Clippy::$err"
+            exit 1
+          }
+
+      - name: Run unit tests
+        shell: pwsh
+        run: |
+          $out = cargo test --locked 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            $err = (($out -split "`r?`n") | Where-Object { $_ -match "FAILED|panicked|error" } | Select-Object -First 25) -join "%0A"
+            Write-Output "::error title=Tests::$err"
+            exit 1
+          }
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Stage portable bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\release\ytm-rs.exe, installer\portable.txt dist\
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ytm-rs-portable-windows-x64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
