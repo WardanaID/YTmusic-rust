@@ -22,6 +22,7 @@ pub mod limiter;
 pub mod spectrum;
 pub mod stereo;
 pub mod tempo;
+pub mod vocal;
 
 pub enum AudioCmd {
     /// A decoder is ready for playback generation `generation`; stale generations are dropped.
@@ -165,6 +166,8 @@ pub struct AudioStatus {
     skip_silence: AtomicBool,
     /// The equalizer's settings, applied to everything on its way to the device.
     eq: Arc<eq::EqParams>,
+    /// Karaoke vocal cut on the middle of stereo songs, before `stereo`.
+    vocal: Arc<vocal::VocalParams>,
     /// Crossfeed, mono and balance, after the equalizer.
     stereo: Arc<stereo::StereoParams>,
     /// Playback speed, applied to each song as it plays.
@@ -630,6 +633,11 @@ impl AudioHandle {
     /// curve's highest boost, leaving room for it in loud songs.
     pub fn set_eq(&self, on: bool, gains: &eq::Gains, no_clip: bool) {
         self.status.eq.set(on, gains, no_clip);
+    }
+
+    /// Takes effect at once, gliding there.
+    pub fn set_vocal_cut(&self, cut: vocal::VocalCut) {
+        self.status.vocal.set(cut);
     }
 
     /// Takes effect at once, gliding there.
@@ -1576,6 +1584,8 @@ struct Bridge {
     /// new song or a seek doesn't restart it.
     eq: eq::Eq,
     /// None on a mono device.
+    vocal: Option<vocal::Vocal>,
+    /// None on a mono device.
     stereo: Option<stereo::Stereo>,
     /// Last, after the volume, so it only acts on what would really clip.
     limiter: limiter::Limiter,
@@ -1586,9 +1596,10 @@ impl Bridge {
         let channels = rodio::Source::channels(&source).get();
         let rate = rodio::Source::sample_rate(&source).get();
         let eq = eq::Eq::new(status.eq.clone(), rate, channels);
+        let vocal = stereo.then(|| vocal::Vocal::new(status.vocal.clone(), rate));
         let stereo = stereo.then(|| stereo::Stereo::new(status.stereo.clone(), rate));
         let limiter = limiter::Limiter::new(status.limit.clone(), rate, channels);
-        Self { inner: Some(source), slot, frame: vec![0.0; channels.max(1) as usize], at: 0, eq, stereo, limiter }
+        Self { inner: Some(source), slot, frame: vec![0.0; channels.max(1) as usize], at: 0, eq, vocal, stereo, limiter }
     }
 }
 
@@ -1600,6 +1611,12 @@ impl Iterator for Bridge {
         if channel == 0 {
             for (c, s) in self.frame.iter_mut().enumerate() {
                 *s = self.eq.process(self.inner.as_mut().and_then(Iterator::next).unwrap_or(0.0), c);
+            }
+            if let Some(vc) = &mut self.vocal {
+                vc.process(&mut self.frame);
+                if vc.boosts() {
+                    self.limiter.boost();
+                }
             }
             if let Some(st) = &mut self.stereo {
                 st.process(&mut self.frame);
@@ -3035,8 +3052,13 @@ mod tests {
         let (mixer, source) = rodio::mixer::mixer(NonZero::new(2).unwrap(), NonZero::new(48_000).unwrap());
         mixer.add(rodio::buffer::SamplesBuffer::new(NonZero::new(2).unwrap(), NonZero::new(48_000).unwrap(), samples.clone()));
         let slot = Arc::new(std::sync::Mutex::new(None));
-        let (eq, stereo, limiter) = (eq::Eq::new(status.eq.clone(), 48_000, 2), Some(stereo::Stereo::new(status.stereo.clone(), 48_000)), limiter::Limiter::new(status.limit.clone(), 48_000, 2));
-        let bridge = Bridge { inner: Some(source), slot: slot.clone(), frame: vec![0.0; 2], at: 0, eq, stereo, limiter };
+        let (eq, vocal, stereo, limiter) = (
+            eq::Eq::new(status.eq.clone(), 48_000, 2),
+            Some(vocal::Vocal::new(status.vocal.clone(), 48_000)),
+            Some(stereo::Stereo::new(status.stereo.clone(), 48_000)),
+            limiter::Limiter::new(status.limit.clone(), 48_000, 2),
+        );
+        let bridge = Bridge { inner: Some(source), slot: slot.clone(), frame: vec![0.0; 2], at: 0, eq, vocal, stereo, limiter };
         let (mut eq, mut limiter) = (eq::Eq::new(status.eq.clone(), 48_000, 2), limiter::Limiter::new(status.limit.clone(), 48_000, 2));
         let want = samples.iter().enumerate().map(|(n, s)| limiter.process(eq.process(*s, n % 2), n % 2));
         assert!(bridge.take(samples.len()).map(f32::to_bits).eq(want.map(f32::to_bits)));

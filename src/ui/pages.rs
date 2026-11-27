@@ -4111,12 +4111,27 @@ fn normalization_desc(app: &App) -> String {
     }
 }
 
-/// Settings › Sound: crossfeed, mono and balance.
+/// Settings › Sound: vocal cut, crossfeed, mono and balance.
 fn stereo_settings(app: &mut App, ui: &mut Ui) {
     use crate::audio::stereo::Crossfeed;
+    use crate::audio::vocal::VocalCut;
     let before = app.stereo;
-    // Nothing for it to do on mono: it's off (and shown off) until then.
+    // Nothing for them to do on mono: they're off (and shown off) until then.
     ui.add_enabled_ui(!app.stereo.mono, |ui| {
+        setting_row(ui, tr!("player-vocal-cut"), Some(tr!("settings-vocal-cut-desc")), |ui| {
+            let shown = if app.stereo.mono { VocalCut::Off } else { app.vocal_cut };
+            let btn = dropdown_button(ui, shown.label(), 120.0, tr!("player-vocal-cut"));
+            widgets::menu_popup(&btn).show(|ui| {
+                widgets::menu_body(ui, 120.0);
+                for m in VocalCut::ALL {
+                    if option_row(ui, m.label(), m == app.vocal_cut).clicked() {
+                        app.set_vocal_cut(m);
+                        ui.close();
+                    }
+                }
+            });
+        });
+        divider(ui);
         setting_row(ui, tr!("settings-headphone-crossfeed"), Some(tr!("settings-headphone-crossfeed-desc")), |ui| {
             let shown = if app.stereo.mono { Crossfeed::Off } else { app.stereo.crossfeed };
             let btn = dropdown_button(ui, shown.label(), 120.0, tr!("settings-headphone-crossfeed"));
@@ -4149,6 +4164,7 @@ fn stereo_settings(app: &mut App, ui: &mut Ui) {
     });
     if app.stereo != before {
         app.audio.set_stereo(app.stereo);
+        app.sync_vocal();
     }
 }
 

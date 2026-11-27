@@ -593,6 +593,29 @@ impl App {
         self.audio.set_keep_pitch(self.keep_pitch);
     }
 
+    pub(super) fn set_vocal_cut(&mut self, mode: crate::audio::vocal::VocalCut) {
+        self.vocal_cut = mode;
+        if mode != crate::audio::vocal::VocalCut::Off {
+            self.vocal_cut_mode = mode;
+        }
+        self.sync_vocal();
+    }
+
+    pub(super) fn toggle_vocal_cut(&mut self) {
+        let next = if self.vocal_cut == crate::audio::vocal::VocalCut::Off {
+            self.vocal_cut_mode
+        } else {
+            crate::audio::vocal::VocalCut::Off
+        };
+        self.set_vocal_cut(next);
+    }
+
+    /// Off on mono, where there are no sides to separate from the middle.
+    pub(super) fn sync_vocal(&self) {
+        let mode = if self.stereo.mono { crate::audio::vocal::VocalCut::Off } else { self.vocal_cut };
+        self.audio.set_vocal_cut(mode);
+    }
+
     pub(crate) fn set_crossfade(&mut self) {
         if self.crossfade {
             self.clear_staged();

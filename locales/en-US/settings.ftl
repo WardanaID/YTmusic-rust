@@ -124,6 +124,7 @@ settings-normalization-song-no-figure = This song: no loudness figure from YouTu
 settings-normalization-song-level = This song: already at the level.
 settings-normalization-song-up = This song: turned up { $db } dB.
 settings-normalization-song-down = This song: turned down { $db } dB.
+settings-vocal-cut-desc = Turn down the voice in the middle of stereo songs while keeping bass, treble and panned instruments, for singing along. Guide leaves the vocal at half level to follow. Back to Off each time ytm-rs starts.
 settings-headphone-crossfeed = Headphone crossfeed
 settings-headphone-crossfeed-desc = Let each ear hear a little of the other side's bass, as from speakers in front of you, so songs panned hard to one side are easier on the ears over headphones.
 settings-mono-audio = Mono audio

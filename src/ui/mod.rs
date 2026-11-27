@@ -731,6 +731,9 @@ pub struct App {
     eq_no_clip: bool,
     /// Crossfeed, mono and balance.
     stereo: crate::audio::stereo::Settings,
+    /// Karaoke vocal cut (not saved: Off each launch), and which active depth its toggle uses.
+    vocal_cut: crate::audio::vocal::VocalCut,
+    vocal_cut_mode: crate::audio::vocal::VocalCut,
     /// Playback speed: whether it's on (saved, and it puts a button in the player bar),
     /// and the speed (not saved: 1× each launch).
     tempo_on: bool,
@@ -1214,6 +1217,11 @@ impl App {
                 crossfeed: get("crossfeed").map(|v| crate::audio::stereo::Crossfeed::from_key(&v)).unwrap_or_default(),
                 mono: get("mono").is_some_and(|v| v == "1"),
                 balance: get("balance").and_then(|v| v.parse::<i8>().ok()).unwrap_or(0).clamp(-100, 100),
+            },
+            vocal_cut: crate::audio::vocal::VocalCut::Off,
+            vocal_cut_mode: match get("vocal_cut_mode").map(|v| crate::audio::vocal::VocalCut::from_key(&v)) {
+                Some(m) if m != crate::audio::vocal::VocalCut::Off => m,
+                _ => crate::audio::vocal::VocalCut::Full,
             },
             tempo_on: get("tempo").is_some_and(|v| v == "1"),
             speed: 1.0,
@@ -2396,6 +2404,7 @@ impl eframe::App for App {
         storage.set_string("crossfeed", self.stereo.crossfeed.key().to_owned());
         storage.set_string("mono", b(self.stereo.mono));
         storage.set_string("balance", self.stereo.balance.to_string());
+        storage.set_string("vocal_cut_mode", self.vocal_cut_mode.key().to_owned());
         storage.set_string("tempo", b(self.tempo_on));
         storage.set_string("keep_pitch", b(self.keep_pitch));
         storage.set_string("show_roman", b(self.show_roman));

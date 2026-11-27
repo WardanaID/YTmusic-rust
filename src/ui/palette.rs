@@ -49,6 +49,7 @@ enum Act {
     Repeat,
     Like,
     Lyrics,
+    VocalCut,
     Queue,
     Mini,
     FullScreen,
@@ -196,6 +197,9 @@ fn entries(app: &App) -> Vec<Entry> {
         add(Group::Actions, act(Act::Shuffle), if app.queue.shuffled() { crate::tr!("player-shuffle-off") } else { crate::tr!("player-shuffle-on") }, "", icon::SHUFFLE);
         add(Group::Actions, act(Act::Like), if app.heard_liked() { crate::tr!("ui-unlike") } else { crate::tr!("ui-like-song") }, "", icon::HEART);
         add(Group::Actions, act(Act::Lyrics), crate::tr!("settings-lyrics-and-now-playing"), "L", icon::MIC_VOCAL);
+        if !app.stereo.mono {
+            add(Group::Actions, act(Act::VocalCut), crate::tr!("player-vocal-cut"), app.vocal_cut.label(), icon::MIC_VOCAL);
+        }
         let (label, glyph) = if app.fullscreen { (crate::tr!("player-exit-full-screen"), icon::SHRINK) } else { (crate::tr!("player-full-screen"), icon::EXPAND) };
         add(Group::Actions, act(Act::FullScreen), label, "F", glyph);
     }
@@ -487,6 +491,7 @@ fn run_command(app: &mut App, ctx: &egui::Context, cmd: Command) {
                 }
             }
             Act::Lyrics => app.toggle_lyrics(),
+            Act::VocalCut => app.toggle_vocal_cut(),
             Act::Queue => app.toggle_queue(),
             Act::Mini => app.actions.push(Action::Mini(!app.mini.target())),
             Act::FullScreen => {

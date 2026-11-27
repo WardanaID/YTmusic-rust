@@ -495,7 +495,22 @@ fn header_extras(app: &mut App, ui: &mut Ui, full_w: f32, t: f32, alpha: f32, co
     if lyr.inner.clicked() {
         app.np_tab = if app.np_tab == NpTab::Lyrics { NpTab::Art } else { NpTab::Lyrics };
     }
-    focused |= up.has_focus() || lyr.inner.has_focus() || com.is_some_and(|c| c.has_focus());
+    let show_vocal = (app.np_tab == NpTab::Lyrics && !no_lyrics) || app.vocal_cut != crate::audio::vocal::VocalCut::Off;
+    let voc = show_vocal.then(|| {
+        ui.scope(|ui| {
+            if app.stereo.mono {
+                ui.disable();
+                ui.multiply_opacity(0.45);
+            }
+            let on = !app.stereo.mono && app.vocal_cut != crate::audio::vocal::VocalCut::Off;
+            chip(ui, crate::tr!("player-vocal-cut"), on)
+        })
+        .inner
+    });
+    if voc.as_ref().is_some_and(egui::Response::clicked) {
+        app.toggle_vocal_cut();
+    }
+    focused |= up.has_focus() || lyr.inner.has_focus() || com.is_some_and(|c| c.has_focus()) || voc.is_some_and(|c| c.has_focus());
     (ui.min_rect().width(), focused)
 }
 
@@ -2384,6 +2399,11 @@ fn options_menu(app: &mut App, ui: &mut Ui, track: &crate::model::Track, lyrics:
         menu_divider(ui);
         if lyrics {
             lyric_options(app, ui);
+        }
+        if !app.stereo.mono {
+            vocal_row(app, ui);
+        }
+        if lyrics || !app.stereo.mono {
             menu_divider(ui);
         }
         if app.shown_video().is_some() {
@@ -2471,6 +2491,24 @@ fn lyric_options(app: &mut App, ui: &mut Ui) {
         crate::downloads::lyrics_picked(&id);
         log::info!("lyrics: showing {} ({}/{}) by choice", p.key(), available.iter().position(|x| *x == p).map_or(0, |i| i + 1), n);
         app.lyric_view.reset();
+    }
+}
+
+/// Karaoke vocal cut on one row, with its depth (`Off`, `Guide`, `Full`) opening beside the menu.
+fn vocal_row(app: &mut App, ui: &mut Ui) {
+    use crate::audio::vocal::VocalCut;
+    let shown = if app.stereo.mono { VocalCut::Off } else { app.vocal_cut };
+    let mut pick = None;
+    submenu_row(ui, crate::tr!("player-vocal-cut"), shown.label(), None, !app.stereo.mono, |ui| {
+        widgets::menu_body(ui, 180.0);
+        for mode in VocalCut::ALL {
+            if widgets::menu_choice(ui, mode.label(), mode == app.vocal_cut) {
+                pick = Some(mode);
+            }
+        }
+    });
+    if let Some(mode) = pick {
+        app.set_vocal_cut(mode);
     }
 }
 
